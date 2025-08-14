@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Oporteo\Dev\Plugin;
 
 use Magento\Backend\Model\Auth\Session as AdminSession;
@@ -13,28 +11,60 @@ use Psr\Log\LoggerInterface;
 
 class LogCustomerDelete
 {
-    private LoggerInterface $logger;
+    /**
+     * @var LoggerInterface
+     */
+    private $logger;
 
+    /**
+     * @var State
+     */
+    private $appState;
+
+    /**
+     * @var AdminSession
+     */
+    private $adminSession;
+
+    /**
+     * @param State $appState
+     * @param AdminSession $adminSession
+     */
     public function __construct(
-        private readonly State $appState,
-        private readonly AdminSession $adminSession
+        State $appState,
+        AdminSession $adminSession
     ) {
+        $this->appState     = $appState;
+        $this->adminSession = $adminSession;
+
+        // Create a custom logger that writes to var/log/customer_delete.log
         $this->logger = new Logger('customer_delete');
         $this->logger->pushHandler(
             new StreamHandler(BP . '/var/log/customer_delete.log', Logger::DEBUG)
         );
     }
 
+    /**
+     * @param CustomerRepositoryInterface $subject
+     * @param \Magento\Customer\Api\Data\CustomerInterface $customer
+     */
     public function beforeDelete(CustomerRepositoryInterface $subject, $customer)
     {
         $this->logAttempt($customer->getId());
     }
 
+    /**
+     * @param CustomerRepositoryInterface $subject
+     * @param int $customerId
+     */
     public function beforeDeleteById(CustomerRepositoryInterface $subject, $customerId)
     {
         $this->logAttempt($customerId);
     }
 
+    /**
+     * @param int $customerId
+     */
     private function logAttempt($customerId)
     {
         // Detect execution area (adminhtml, frontend, webapi_rest, etc.)
@@ -55,13 +85,13 @@ class LogCustomerDelete
             $stackTrace = (new \Exception())->getTraceAsString();
 
             // Build log entry
-            $logData = [
-                'message' => 'Customer delete attempt',
+            $logData = array(
+                'message'     => 'Customer delete attempt',
                 'customer_id' => $customerId,
-                'area' => $area,
-                'admin_user' => $adminUser,
+                'area'        => $area,
+                'admin_user'  => $adminUser,
                 'stack_trace' => $stackTrace
-            ];
+            );
 
             // Log to var/log/customer_delete.log
             $this->logger->info(json_encode($logData));

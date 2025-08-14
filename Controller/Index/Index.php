@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Oporteo\Dev\Controller\Index;
 
 use Magento\Framework\App\ActionInterface;
@@ -10,12 +8,23 @@ use Magento\Framework\View\Result\PageFactory;
 
 class Index implements ActionInterface
 {
-    public function __construct(
-        private readonly PageFactory $pageFactory,
-    ) {
+    /**
+     * @var PageFactory
+     */
+    private $pageFactory;
+
+    /**
+     * @param PageFactory $pageFactory
+     */
+    public function __construct(PageFactory $pageFactory)
+    {
+        $this->pageFactory = $pageFactory;
     }
 
-    public function execute(): Page
+    /**
+     * @return Page
+     */
+    public function execute()
     {
         return $this->pageFactory->create();
     }
