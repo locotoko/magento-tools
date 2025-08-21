@@ -5,14 +5,13 @@ namespace Oporteo\Dev\Plugin;
 use Magento\Backend\Model\Auth\Session as AdminSession;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Framework\App\State;
-use Monolog\Handler\StreamHandler;
-use Monolog\Logger;
-use Psr\Log\LoggerInterface;
+use Zend\Log\Logger;
+use Zend\Log\Writer\Stream;
 
 class LogCustomerDelete
 {
     /**
-     * @var LoggerInterface
+     * @var Logger
      */
     private $logger;
 
@@ -26,48 +25,37 @@ class LogCustomerDelete
      */
     private $adminSession;
 
-    /**
-     * @param State $appState
-     * @param AdminSession $adminSession
-     */
     public function __construct(
         State $appState,
         AdminSession $adminSession
     ) {
-        $this->appState     = $appState;
-        $this->adminSession = $adminSession;
+        $this->appState            = $appState;
+        $this->adminSession        = $adminSession;
 
-        // Create a custom logger that writes to var/log/customer_delete.log
-        $this->logger = new Logger('customer_delete');
-        $this->logger->pushHandler(
-            new StreamHandler(BP . '/var/log/customer_delete.log', Logger::DEBUG)
-        );
+        $writer = new Stream(BP . '/var/log/customer_delete.log');
+        $this->logger = new Logger();
+        $this->logger->addWriter($writer);
+
     }
 
-    /**
-     * @param CustomerRepositoryInterface $subject
-     * @param \Magento\Customer\Api\Data\CustomerInterface $customer
-     */
     public function beforeDelete(CustomerRepositoryInterface $subject, $customer)
     {
-        $this->logAttempt($customer->getId());
+        $this->logAttempt($customer);
     }
 
-    /**
-     * @param CustomerRepositoryInterface $subject
-     * @param int $customerId
-     */
     public function beforeDeleteById(CustomerRepositoryInterface $subject, $customerId)
     {
-        $this->logAttempt($customerId);
+        try {
+            $customer = $subject->getById($customerId);
+        } catch (\Exception $e) {
+            $customer = null;
+        }
+
+        $this->logAttempt($customer);
     }
 
-    /**
-     * @param int $customerId
-     */
-    private function logAttempt($customerId)
+    private function logAttempt($customer = null)
     {
-        // Detect execution area (adminhtml, frontend, webapi_rest, etc.)
         try {
             $area = $this->appState->getAreaCode();
         } catch (\Exception $e) {
@@ -84,18 +72,34 @@ class LogCustomerDelete
             // Get stack trace
             $stackTrace = (new \Exception())->getTraceAsString();
 
+            $data = [];
+
+            if ($customer) {
+                $data = [
+                    'email' => $customer->getEmail(),
+                    'firstname' => $customer->getFirstname(),
+                    'lastname' => $customer->getLastname(),
+                    'created_at' => $customer->getCreatedAt(),
+                    'updated_at' => $customer->getUpdatedAt(),
+                ];
+            }
+
+            foreach ($customer->getCustomAttributes() as $attr) {
+                $data[$attr->getAttributeCode()] = $attr->getValue();
+            }
+
             // Build log entry
             $logData = array(
-                'message'     => 'Customer delete attempt',
-                'customer_id' => $customerId,
-                'area'        => $area,
-                'admin_user'  => $adminUser,
-                'stack_trace' => $stackTrace
+                'message'      => 'Customer delete attempt',
+                'area'         => $area,
+                'admin_user'   => $adminUser,
+                'customerData'     => $data,
+                'stack_trace'  => $stackTrace
             );
 
             // Log to var/log/customer_delete.log
             $this->logger->info(json_encode($logData));
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->logger->error($e->getMessage());
         }
     }
